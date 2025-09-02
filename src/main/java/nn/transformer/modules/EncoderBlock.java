@@ -64,7 +64,7 @@ public class EncoderBlock implements Module {
 
         // Y = X + selfAttn(norm1(X))
         Tensor[] gradSelfAttn = mha.calcGradientsMany(dR1, accumulate, 1.0);
-        Tensor dX1 = gradSelfAttn[0].add(gradSelfAttn[1]);
+        Tensor dX1 = gradSelfAttn[0];
         Tensor dNorm1 = norm1.calcGradients(dX1, accumulate, 1.0);
 
         return dR1.add(dNorm1);

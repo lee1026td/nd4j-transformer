@@ -20,20 +20,20 @@ public class Main {
         Nd4jInit.configure();
 
         int V = 200;
-        int d_model = 64;
-        int nHead = 1;
-        int d_hidden = 128;
-        int N = 1;
+        int d_model = 128;
+        int nHead = 2;
+        int d_hidden = 512;
+        int N = 3;
 
-        double dropout = 0.0;
+        double dropout = 0.1;
         double lnEps = 1e-5;
-        int maxLen = 10;
+        int maxLen = 20;
         int BOS = 1, EOS = 2, PAD = 0;
 
-        int trainN = 1;
-        int validN = 1;
-        int batchSize = 1;
-        int epochs = 500;
+        int trainN = 100;
+        int validN = 10;
+        int batchSize = 10;
+        int epochs = 5;
 
         double lr = 5e-3;
         double beta1 = 0.9, beta2 = 0.98, adamEps = 1e-8;

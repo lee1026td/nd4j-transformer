@@ -86,7 +86,7 @@ public class DecoderBlock implements Module {
 
         // Y = X + sa
         Tensor[] gradSelf = selfMHA.calcGradientsMany(dR2, accumulate, 1.0);
-        Tensor dX1 = gradSelf[0].add(gradSelf[1]);
+        Tensor dX1 = gradSelf[0];
         Tensor dNorm1 = norm1.calcGradients(dX1, accumulate, 1.0);
         Tensor dX = dR2.add(dNorm1);
 

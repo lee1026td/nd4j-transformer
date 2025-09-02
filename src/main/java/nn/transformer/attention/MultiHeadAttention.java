@@ -171,33 +171,25 @@ public class MultiHeadAttention implements Module {
         Tensor dK = AttentionOps.mergeHeads(dKh);
         Tensor dV = AttentionOps.mergeHeads(dVh);
 
-        Tensor dXq, dXkv;
         if(isCross) {
             // Cross-attention
             // Q = Xq x Wq, [K;V] = Xkv x Wkv
 
             // dXq
-            dXq = Wq.calcGradients(dQ, accumulate, scale);
+            Tensor dXq = Wq.calcGradients(dQ, accumulate, scale);
             // dXkv
             Tensor dKV = Tensor.concat(-1, dK, dV);     // [B, Tkv, 2*d_model]
-            dXkv = Wkv.calcGradients(dKV, accumulate, scale);
+            Tensor dXkv = Wkv.calcGradients(dKV, accumulate, scale);
+
+            return new Tensor[]{ dXq, dXkv };
         } else {
             // Self-attention
             // [Q;K;V] = X x Wqkv, Wqkv : [B, T, 3 * d_model]
+            Tensor dQKV = Tensor.concat(-1, dQ, dK, dV);
+            Tensor dX = Wqkv.calcGradients(dQKV, accumulate, scale);
 
-            // dXq -> Pass gradients like [dQ, 0, 0] into Wqkv
-            Tensor zerosTk = Tensor.zeros(dK.shape());
-            Tensor zerosTv = Tensor.zeros(dV.shape());
-            Tensor dOutQ = Tensor.concat(-1, dQ, zerosTk, zerosTv);
-            dXq = Wqkv.calcGradients(dOutQ, accumulate, scale);
-
-            // dXkv -> [0, dK, dV] into Wqkv, always accumulate gradients
-            Tensor zerosTq = Tensor.zeros(dQ.shape());
-            Tensor dOutKV = Tensor.concat(-1, zerosTq, dK, dV);
-            dXkv = Wqkv.calcGradients(dOutKV, true, scale);
+            return new Tensor[]{ dX, null };
         }
-
-        return new Tensor[]{ dXq, dXkv };
     }
 
     @Override
