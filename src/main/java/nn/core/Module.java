@@ -1,6 +1,6 @@
 package nn.core;
 
-import nn.optimizer.Optimizer;
+import nn.core.optimizer.Optimizer;
 import tensor.Tensor;
 
 import java.util.List;

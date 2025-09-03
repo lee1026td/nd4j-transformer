@@ -1,9 +1,12 @@
 package tensor;
 
+import net.ericaro.neoitertools.Pair;
+import nn.core.initializer.Initializer;
 import org.nd4j.linalg.activations.impl.ActivationGELU;
 import org.nd4j.linalg.activations.impl.ActivationSoftmax;
 import org.nd4j.linalg.api.buffer.DataType;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.api.ops.impl.transforms.custom.TopK;
 import org.nd4j.linalg.cpu.nativecpu.NDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.indexing.INDArrayIndex;
@@ -259,6 +262,19 @@ public class Tensor implements ITensor {
     @Override
     public Tensor min(int axis, boolean keepDims) {
         return new Tensor(data.min(keepDims, axis));
+    }
+
+    @Override
+    public Tensor[] topK(int topK, int axis, boolean keepDims, boolean sorted) {
+
+        INDArray[] sortedPair = Nd4j.sortWithIndices(this.data, axis, false);
+        Tensor sortedInd = new Tensor(sortedPair[0]);
+        Tensor sortedVals = new Tensor(sortedPair[1]);
+
+        sortedInd = sortedInd.slice(axis, 0, topK);
+        sortedVals = sortedVals.slice(axis, 0, topK);
+
+        return new Tensor[]{ sortedVals, sortedInd };
     }
 
     @Override

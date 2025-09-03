@@ -2,11 +2,9 @@ package nn.layers;
 
 import nn.core.Module;
 import nn.core.Parameter;
-import nn.initializer.Initializer;
-import nn.optimizer.Optimizer;
-import nn.transformer.mask.MaskUtils;
-import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.shade.guava.primitives.Ints;
+import nn.core.initializer.Initializer;
+import nn.core.optimizer.Optimizer;
+import nn.mask.MaskUtils;
 import tensor.Tensor;
 
 import java.util.List;

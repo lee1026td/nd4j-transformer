@@ -36,7 +36,7 @@ public interface ITensor {
     Tensor var(int axis, boolean keepDims);
     Tensor max(int axis, boolean keepDims);
     Tensor min(int axis, boolean keepDims);
-
+    Tensor[] topK(int topK, int axis, boolean keepDims, boolean sorted);
 
     Tensor exp();
     Tensor log();

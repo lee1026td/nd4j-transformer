@@ -1,24 +1,66 @@
-import nn.initializer.*;
+import nn.core.initializer.*;
 import nn.layers.*;
-import nn.loss.*;
-import nn.normalizer.*;
-import nn.optimizer.*;
-import nn.transformer.*;
-import nn.transformer.embeddings.*;
-import nn.transformer.mask.MaskUtils;
-import nn.transformer.modules.*;
-import nn.transformer.trainer.*;
+import nn.core.loss.*;
+import nn.layers.normalizer.*;
+import nn.core.optimizer.*;
+import nn.layers.embeddings.*;
+import nn.mask.MaskUtils;
+import nn.models.transformer.Generator;
+import nn.models.transformer.Transformer;
+import nn.modules.*;
+import nn.trainer.*;
+import org.nd4j.linalg.factory.Nd4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tensor.Nd4jInit;
 import tensor.Tensor;
 
-import java.util.Arrays;
 import java.util.Random;
 import java.util.function.Supplier;
 
 public class Main {
+    private static final Logger log = LoggerFactory.getLogger(Main.class);
+
     public static void main(String[] args) {
         Nd4jInit.configure();
 
+        int B = 2;
+        int T = 7;
+        int d = 10;
+        int numExp = 5;
+
+        Tensor X = Tensor.rand(B, T, d);
+
+        System.out.println(X);
+        Linear proj = new Linear(d, numExp, new XavierNormal(), true);
+        Tensor logits = proj.forward(X, true);
+
+        System.out.println(logits);
+
+        int topK = 3;
+        Tensor[] outs = logits.topK(topK, -1, true, true);
+        Tensor vals = outs[0];
+        Tensor inds = outs[1];
+
+        System.out.println(inds);
+        System.out.println(vals);
+        Tensor probs = Tensor.fill(Float.NEGATIVE_INFINITY, logits.shape());
+        for(int i=0;i<B;i++) {
+            for(int j=0;j<T;j++) {
+                for(int k=0;k<topK;k++) {
+                    int validIndex = inds.getInt(i, j, k);
+                    double validVal = vals.getDouble(i, j, k);
+
+                    probs.set(validVal, i, j, validIndex);
+                }
+            }
+        }
+
+        System.out.println(probs);
+
+        System.out.println(probs.softmax());
+
+        /*
         int V = 200;
         int d_model = 128;
         int nHead = 2;
@@ -63,7 +105,8 @@ public class Main {
 
         Trainer trainer = new Trainer(model, opt, ceLoss, V, PAD);
 
-        /* ===== 에폭 루프 ===== */
+
+        // Epoch loops
 
         Random r = new Random();
 
@@ -71,9 +114,9 @@ public class Main {
             double[] trainRes = trainer.trainEpoch(trainData, batchSize);
             System.out.printf("epoch %d | loss=%.4f | tokenAcc=%.4f%n", e, trainRes[0], trainRes[1]);
 
-            /* For validataion */
+            // For validataion
 
-            /*
+
             int idx = r.nextInt(validN);
             Tensor valSrcId = validData.batchSrc(idx, 1);
             Tensor generated = Generator.greedyDecode(model, valSrcId, maxLen, BOS, EOS, PAD);
@@ -81,11 +124,13 @@ public class Main {
             System.out.println(valSrcId);
             System.out.println(generated);
 
-             */
+
+
             if(trainRes[1] >= 0.95) break;
         }
 
-        /* Validation */
+        // Validation
+
 
         for(int i=0;i<validN;i++) {
             Tensor validSrcIn = validData.batchSrc(i, 1);
@@ -93,5 +138,7 @@ public class Main {
             System.out.println(validSrcIn);
             System.out.println(generated);
         }
+
+         */
     }
 }
