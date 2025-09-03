@@ -1,6 +1,7 @@
 import nn.core.initializer.*;
 import nn.layers.*;
 import nn.core.loss.*;
+import nn.layers.ffn.moe.MoERouter;
 import nn.layers.normalizer.*;
 import nn.core.optimizer.*;
 import nn.layers.embeddings.*;
@@ -9,6 +10,7 @@ import nn.models.transformer.Generator;
 import nn.models.transformer.Transformer;
 import nn.modules.*;
 import nn.trainer.*;
+import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,57 +27,36 @@ public class Main {
         Nd4jInit.configure();
 
         int B = 2;
-        int T = 7;
-        int d = 10;
-        int numExp = 5;
+        int T = 4;
+        int d = 8;
+        int N = 5;
+        int K = 2;
+        double cFactor = 1.0;
 
         Tensor X = Tensor.rand(B, T, d);
+        System.out.println("X : \n" + X);
 
-        System.out.println(X);
-        Linear proj = new Linear(d, numExp, new XavierNormal(), true);
-        Tensor logits = proj.forward(X, true);
+        MoERouter router = new MoERouter(d, N, K, true, cFactor, new XavierNormal(), true);
 
-        System.out.println(logits);
-
-        int topK = 3;
-        Tensor[] outs = logits.topK(topK, -1, true, true);
-        Tensor vals = outs[0];
-        Tensor inds = outs[1];
-
-        System.out.println(inds);
-        System.out.println(vals);
-        Tensor probs = Tensor.fill(Float.NEGATIVE_INFINITY, logits.shape());
-        for(int i=0;i<B;i++) {
-            for(int j=0;j<T;j++) {
-                for(int k=0;k<topK;k++) {
-                    int validIndex = inds.getInt(i, j, k);
-                    double validVal = vals.getDouble(i, j, k);
-
-                    probs.set(validVal, i, j, validIndex);
-                }
-            }
-        }
-
-        System.out.println(probs);
-
-        System.out.println(probs.softmax());
+        router.forward(X, true);
 
         /*
+
         int V = 200;
         int d_model = 128;
         int nHead = 2;
-        int d_hidden = 512;
-        int N = 3;
+        int d_hidden = 256;
+        int N = 2;
 
-        double dropout = 0.1;
+        double dropout = 0.0;
         double lnEps = 1e-5;
         int maxLen = 20;
         int BOS = 1, EOS = 2, PAD = 0;
 
-        int trainN = 100;
+        int trainN = 1000;
         int validN = 10;
         int batchSize = 10;
-        int epochs = 5;
+        int epochs = 500;
 
         double lr = 5e-3;
         double beta1 = 0.9, beta2 = 0.98, adamEps = 1e-8;
@@ -100,8 +81,8 @@ public class Main {
         Loss ceLoss = new CrossEntropyLoss();
         Optimizer opt = new Adam(lr, beta1, beta2, adamEps);
 
-        ToySeq2SeqDataset trainData = ToySeq2SeqDataset.make(ToySeq2SeqDataset.Task.REVERSE, trainN, maxLen, V, PAD, BOS, EOS);
-        ToySeq2SeqDataset validData = ToySeq2SeqDataset.make(ToySeq2SeqDataset.Task.REVERSE, validN, maxLen, V, PAD, BOS, EOS);
+        ToySeq2SeqDataset trainData = ToySeq2SeqDataset.make(ToySeq2SeqDataset.Task.COPY, trainN, maxLen, V, PAD, BOS, EOS);
+        ToySeq2SeqDataset validData = ToySeq2SeqDataset.make(ToySeq2SeqDataset.Task.COPY, validN, maxLen, V, PAD, BOS, EOS);
 
         Trainer trainer = new Trainer(model, opt, ceLoss, V, PAD);
 
@@ -125,12 +106,10 @@ public class Main {
             System.out.println(generated);
 
 
-
             if(trainRes[1] >= 0.95) break;
         }
 
         // Validation
-
 
         for(int i=0;i<validN;i++) {
             Tensor validSrcIn = validData.batchSrc(i, 1);
@@ -138,7 +117,6 @@ public class Main {
             System.out.println(validSrcIn);
             System.out.println(generated);
         }
-
-         */
+        */
     }
 }

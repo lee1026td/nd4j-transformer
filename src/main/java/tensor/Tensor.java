@@ -327,8 +327,7 @@ public class Tensor implements ITensor {
 
     @Override
     public Tensor lt(double d) {
-        double[] mask = data.lt(d).toDoubleVector();
-        return Tensor.from(mask, this.shape());
+        return new Tensor(data.lt(d).castTo(DataType.FLOAT));
     }
 
     @Override
