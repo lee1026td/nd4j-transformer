@@ -18,10 +18,9 @@ import static org.nd4j.linalg.indexing.NDArrayIndex.point;
 
 public class MoEFeedForward implements FeedForward {
 
-    private final int d_model, d_hidden;
-    private final int numExperts, topK;
-    private final boolean useNoisyTopK;
-    private final double capacityFactor;
+    private final int d_model;
+    private final int numExperts;
+    private final int topK;
 
     private final FeedForwardNetwork[] experts;
     private final MoERouter router;
@@ -29,13 +28,12 @@ public class MoEFeedForward implements FeedForward {
     private int expCapacity;
     private int B, T;
 
+    private Tensor dispatchT2D, combine2D;
+
     public MoEFeedForward(int d_model, int d_hidden, int numExperts, int topK, boolean useNoisyTopK, double capacityFactor, Activation act, Initializer wInit, Initializer bInit, boolean isTrainable, double dropProb) {
         this.d_model = d_model;
-        this.d_hidden = d_hidden;
         this.numExperts = numExperts;
         this.topK = topK;
-        this.useNoisyTopK = useNoisyTopK;
-        this.capacityFactor = capacityFactor;
 
         this.experts = new FeedForwardNetwork[numExperts];
         for(int i=0;i<numExperts;i++) {
@@ -47,23 +45,27 @@ public class MoEFeedForward implements FeedForward {
 
     @Override
     public Tensor forward(Tensor X, boolean training) {
+        // Runs MoERouter first to routes each input tokens to experts
         router.forward(X, training);
 
-        // Get dispatch, combine, expCapacity
+        // Get dispatch, combine, expCapacity from MoERouter cache
         Tensor dispatch = router.getDispatch();
         Tensor combine = router.getCombine();
         this.expCapacity = router.getExpCapacity();
 
         // Expert input batch
-        // dispatch [B*T, N, C] -> transpose(0, -1) [C, N, B*T] -> to 2D [C*N, B*T]
-        // X [B*T, d]
-        // dispatch^T (2D) x X => [C*N, d]
-        // -> to original shape : [N, C, D]
         this.B = X.size(0);
         this.T = X.size(1);
         int numTokens = B * T;
-        Tensor dispatchT2D = dispatch.permute(1, 2, 0).reshape(numExperts*expCapacity, numTokens);
-        Tensor out2D = dispatchT2D.matmul(X);
+
+        // dispatch [B*T, N, C] -> 2D [B*T, N*C] -> transpose [N*C, B*T]
+        this.dispatchT2D = dispatch.reshape(numTokens, numExperts*expCapacity).transpose();
+        // X [B, T, d] -> 2D [B*T, d]
+        Tensor X2D = X.reshape(numTokens, d_model);
+        // dispatch^T (2D) x X => [N*C, d]
+        // Making each expert's input batch
+        Tensor out2D = dispatchT2D.matmul(X2D);
+        // out2D [N*C, d] -> expertIn [N, C, d]
         Tensor expertIn = out2D.reshape(numExperts, expCapacity, d_model);
 
         // Run Experts
@@ -74,18 +76,66 @@ public class MoEFeedForward implements FeedForward {
             expYArr.put(new INDArrayIndex[]{point(i), all(), all()}, Ye.getNDArray());
         }
 
-        // Combine
+        // [N, C, d]
+        Tensor expY = new Tensor(expYArr);
+        System.out.println("expY : \n" + expY);
 
+        // Combine
+        // Gathers all experts outputs to one single output
+
+        // combine [B*T, N, C] -> 2D [B*T, N*C]
+        this.combine2D = combine.reshape(numTokens, numExperts*expCapacity);  // [B*T, N*C]
+        // expY [N, C, d] -> 2D [N*C, d]
+        Tensor expY2D = expY.reshape(numExperts*expCapacity, d_model);          // [N*C, d]
+        // Each output of expert's slot -> to original minibatch shape projection
+        // combine2D x expY2D = [B*T, N*C] x [N*C, d] = [B*T, d]
+        Tensor Y2D = combine2D.matmul(expY2D);
+        Tensor Y = Y2D.reshape(B, T, d_model);  // [B, T, d]
+
+        return Y;
     }
 
     @Override
     public Tensor calcGradients(Tensor dY, boolean accumulate, double scale) {
-        return null;
+        // dY -> to each experts
+        int numTokens = B * T;
+        // Reshape dY [B, T, d] -> [B*T, d]
+        Tensor dY2D = dY.reshape(numTokens, d_model);
+
+        // 1. (cached) combine2D : [B*T, N*C] -> transpose [N*C, B*T]
+        // 2. combine2D^T x dY = [N*C, B*T] x [B*T, d] = [N*C, d]
+        Tensor dYpacked2D = combine2D.transpose().matmul(dY2D);
+        // 3. Reshape to 3D : [N, C, d]
+        Tensor dYpacked = dYpacked2D.reshape(numExperts, expCapacity, d_model);
+
+        // Expert backward
+        // dXpacked : [N, C, d]
+        Tensor dXpacked = Tensor.zeros(numExperts, expCapacity, d_model);
+        for(int i=0;i<numExperts;i++) {
+            // to each expert : get row [C, d]
+            Tensor dY_e = new Tensor(dXpacked.getNDArray().get(point(i), all(), all()));
+
+            Tensor dX_e = experts[i].calcGradients(dY_e, accumulate, scale);
+
+            // Assign to packed buffer
+            dXpacked.getNDArray().get(point(i), all(), all()).assign(dX_e.getNDArray());
+        }
+
+        // 1. dXpacked [N, C, d] -> 2D [N*C, d]
+        Tensor dXpacked2D = dXpacked.reshape(numExperts*expCapacity, d_model);
+        // 2. dX2D = dispatchT2D x dXpacked2D = [B*T, N*C] x [N*C, d] = [B*T, d]
+        Tensor dX2D = dispatchT2D.matmul(dXpacked2D);
+        // 3. Reshape [B*T, d] -> [B, T, d]
+        Tensor dX = dX2D.reshape(B, T, d_model);
+
+        return dX;
     }
 
     @Override
     public void update(Optimizer optimizer) {
-
+        for(FeedForwardNetwork expert : experts) {
+            expert.update(optimizer);
+        }
     }
 
     @Override
@@ -95,6 +145,12 @@ public class MoEFeedForward implements FeedForward {
 
     @Override
     public void zeroGrad() {
+        for(FeedForwardNetwork expert : experts) {
+            expert.zeroGrad();
+        }
+    }
 
+    public MoERouter getRouter() {
+        return router;
     }
 }

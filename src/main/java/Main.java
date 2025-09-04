@@ -1,6 +1,9 @@
+import nn.core.activation.GELU;
 import nn.core.initializer.*;
+import nn.core.loss.moe.LoadBalancingLoss;
 import nn.layers.*;
 import nn.core.loss.*;
+import nn.layers.ffn.moe.MoEFeedForward;
 import nn.layers.ffn.moe.MoERouter;
 import nn.layers.normalizer.*;
 import nn.core.optimizer.*;
@@ -28,7 +31,7 @@ public class Main {
 
         int B = 2;
         int T = 4;
-        int d = 8;
+        int d = 9;
         int N = 5;
         int K = 2;
         double cFactor = 1.0;
@@ -36,9 +39,17 @@ public class Main {
         Tensor X = Tensor.rand(B, T, d);
         System.out.println("X : \n" + X);
 
-        MoERouter router = new MoERouter(d, N, K, true, cFactor, new XavierNormal(), true);
+        MoEFeedForward moeFFN = new MoEFeedForward(d, d*4, N, K, true, cFactor, new GELU(true), new XavierNormal(), new HeNormal(), true, 0.1);
 
-        router.forward(X, true);
+        Tensor Y = moeFFN.forward(X, true);
+
+        System.out.println("Y : \n" + Y);
+
+        MoERouter router = moeFFN.getRouter();
+
+        LoadBalancingLoss lb = new LoadBalancingLoss();
+        double lbloss = lb.forward(router);
+        System.out.println(lbloss);
 
         /*
 

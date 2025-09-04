@@ -41,4 +41,9 @@ public class Parameter {
     public void addGrad(Tensor grad) {
         this.grad = (this.grad == null) ? grad : this.grad.add(grad);
     }
+
+    @Override
+    public String toString() {
+        return name + " : \n" + "   data : \n" + data + "   grad : \n" + grad;
+    }
 }

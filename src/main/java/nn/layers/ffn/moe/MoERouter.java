@@ -27,6 +27,27 @@ public class MoERouter implements Module {
 
     // Caches
     private Tensor dispatch, combine;
+
+    public Tensor getfMean() {
+        return fMean;
+    }
+
+    public Tensor getpMean() {
+        return pMean;
+    }
+
+    public Tensor getLogits() {
+        return logits;
+    }
+
+    public Tensor getProbsAll() {
+        return probsAll;
+    }
+
+    public Tensor getLogSumExpLogits() {
+        return logSumExpLogits;
+    }
+
     // For LB-Loss
     private Tensor pMean, fMean;
     // For Router-Z-Loss
@@ -144,11 +165,13 @@ public class MoERouter implements Module {
                 .mul(expRankSC.reshape(topK, numTokens, numExperts, expCapacity))
                 .sum(0, false);
 
-        System.out.println("combine : \n" + combine);
+        //System.out.println("combine : \n" + combine);
 
         // For LB-Loss
-        this.fMean = dispatch.sum(0, true).sum(1, true).div(numTokens * topK);
-        this.pMean = probs.mean(0, true).mean(1, true);
+        // [N]
+        this.fMean = dispatch.sum(0, false).sum(-1, false).div(numTokens * topK);
+        // [N]
+        this.pMean = probs.reshape(B, T, numExperts).mean(0, false).mean(0, false);
 
         // For Router-Z-Loss
         // Caching Pre-Topk softmax(logits)
@@ -163,25 +186,40 @@ public class MoERouter implements Module {
     public Tensor calcGradients(Tensor dY, boolean accumulate, double scale) {
 
         // Use LB-Loss, Router-Z-Loss to update projLogits, projNoise
+        // dY : Auxiliary loss from LoadBalancingLoss, RouterZLoss
+        projLogits.calcGradients(dY, accumulate, scale);        // accumulate will be true for 2 Losses (LB, Z loss)
 
-
-        // Identity return
+        // Identity return (nothing to return)
         return dY;
     }
 
     @Override
     public void update(Optimizer optimizer) {
-
+        projLogits.update(optimizer);
     }
 
     @Override
     public List<Parameter> parameters() {
-        return List.of();
+        if(useNoisyTopK) {
+            return List.of(projLogits.parameters().get(0), projNoise.parameters().get(0));
+        }
+        return List.of(projLogits.parameters().get(0));
     }
 
     @Override
     public void zeroGrad() {
+        if(useNoisyTopK) {
+            projNoise.zeroGrad();
+        }
+        projLogits.zeroGrad();
+    }
 
+    public int getNumExperts() {
+        return numExperts;
+    }
+
+    public int getTopK() {
+        return topK;
     }
 
     public Tensor getDispatch() {
@@ -194,5 +232,9 @@ public class MoERouter implements Module {
 
     public int getExpCapacity() {
         return expCapacity;
+    }
+
+    public Linear getProjLogits() {
+        return projLogits;
     }
 }
